@@ -2,10 +2,10 @@
 
 set -o noglob
 
-exec 3<> /dev/tcp/offsec-chalbroker.osiris.cyber.nyu.edu/1236;
+exec 3<>/dev/tcp/offsec-chalbroker.osiris.cyber.nyu.edu/1236
 
 sleep 1
-echo "nf2137" >&3;
+echo "nf2137" >&3
 
 DIGITS_EQUATION_REGEX="^[0-9]+[[:space:]].[[:space:]][0-9]+$"
 DIGITS_REGEX="^[0-9]+$"
@@ -25,7 +25,6 @@ declare -A DIGITS=(
     ["EIGHT"]="8"
     ["NINE"]="9"
 )
-
 
 while IFS= read -r line <&3; do
     echo "$line"
@@ -50,7 +49,7 @@ while IFS= read -r line <&3; do
                     for WORD in $(echo "$PART" | tr "-" "\n"); do
                         EQUATION+="${DIGITS[$WORD]}"
                     done
-                else 
+                else
                     EQUATION+="$PART"
                 fi
 
@@ -62,6 +61,4 @@ while IFS= read -r line <&3; do
     fi
 done
 
-
 exec 3>&-
-
