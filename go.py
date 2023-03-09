@@ -6,9 +6,10 @@ from pwn import *
 context.binary = './heterograms'
 context.terminal = ['tilix', '-e', 'bash', '-c']
 
-loop_3 = [1]
-loop_2 = [0]
-loop_1 = [2]
+chksum_placeholder = [0]
+loop_one = [1]
+loop_zero = [0]
+loop_two = [2]
 
 def flatten(items: Iterable) -> List[Any]:
     return list(chain.from_iterable(items))
@@ -31,110 +32,83 @@ def generate_checksum(a: List[int]) -> int:
     return ~x
 
 
-def generate_payload(idxs: List[int], pre_idxs: List[int] = []) -> bytes:
+def generate_word_payload(word_cmd: List[int], before_word_cmds: List[int] = []) -> bytes:
+    data = chksum_placeholder + before_word_cmds + loop_one + [len(word_cmd)] + word_cmd
+    return generate_payload(data)
 
-    """
-        #include <stdio.h>
-        #include <stdlib.h>
-        #include <string.h>
+def generate_copy_payload(cnt_num = 0) -> bytes:
+    data = chksum_placeholder + loop_two * 2 + loop_zero + [cnt_num] + loop_one + [2] + [0] * 2
+    return generate_payload(data)
 
-
-        int main()
-        {
-            char *the_string;
-            size_t str_len;
-            int i;
-            
-            the_string = "unforgivable";
-            for (i = 0; str_len = strlen(the_string), (unsigned long)(long)i < str_len; i = i + 1) {
-                printf("%c %d\n", the_string[i], ((long)(int)(unsigned int)(char)(the_string[i] + 159)) % 26 );
-            }
-
-            return 0;
-        }
-
-        u 20
-        n 13
-        f 5
-        o 14
-        r 17
-        g 6
-        i 8
-        v 21
-        a 0
-        b 1
-        l 11
-        e 4
-    """
-
-    chksum_placeholder = [0]
-
-    payload = chksum_placeholder + pre_idxs + loop_3 + [len(idxs)] + idxs
-    payload = [ len(payload) ] + payload
-
+def generate_payload(data: List[int]) -> bytes:
+    payload = [ len(data) ] + data
     payload[1] = generate_checksum(payload[2:])
-
-    print(payload)
-
-    # Issue here when checksum is under `-128`.
-    # It's `-134` in our case for the whole
     return flat(payload, word_size=8)
 
 
-idxs_0 = [
-    20, # u
-    13, # n
-    5,  # f
-    14, # o
-    17, # r
-    6,  # g
-    8,  # i
-    21, # v
-    0,  # a
-    1,  # b
-    11, # l
-    4,  # e
+def to_indices(s: str) -> List[int]:
+    return [(ord(c) + 7) % 26  for c in s]
+
+words = [
+    "unforgivable",
+    "troublemakings",
+    "computerizably",
+    "hydromagnetics",
+    "flamethrowing",
+    "copyrightable",
+    "undiscoverably",
 ]
 
-idxs_1 = [
-    -1,
-    -13,  
-    -8,
-    2,
-    -9, 
+breakpoints = [
+    # '&process',
+    # '&check'
+    # '0x55555555552e', # At checksum comparison
+    # '0x5555555552d6', # Compare globalstate string value index
+    # '0x55555555563d', # Handle star
+    # '0x5555555555f6', # Loop for 1 
+    # '0x5555555555e3', # When char over 25
+    '0x5555555552a2', # curr_str assignment
+    '0x555555555359', # globalstate first idx is 7 check
 ]
 
+print_statements = [
+    # 'x/32c &globalstate',
+    # 'x/11s &strs',
+]
+
+breakpoints = make_breakpoints(breakpoints)
+commands = make_commands(breakpoints + print_statements + ['c'])
 
 with process('./heterograms', aslr=False) as p:
-    print(p.readline())
-    
-    breakpoints = [
-        # '&process',
-        # '&check'
-        # '0x55555555552e', # At checksum comparison
-        # '0x5555555552d6', # Compare globalstate string value index
-        '0x55555555563d',
-        '0x5555555555f6', # Loop for 1 
-        # '0x5555555555f6',
-    ]
+# with remote('offsec-chalbroker.osiris.cyber.nyu.edu', 7331) as p:
+    is_remote = isinstance(p, remote)
 
-    print_statements = [
-      'x/32c &globalstate',
-      'x/11s &strs',
-    ]
+    if is_remote:
+        print(p.recv())
+        p.sendline(b'nf2137')
 
-    breakpoints = make_breakpoints(breakpoints)
-    commands = make_commands(breakpoints + print_statements + ['c'])
+    print(p.recv())
 
-    payload = generate_payload(idxs_0)
-    print(payload)
-    p.write(payload)
-    print(p.readline())
+    for idx, word in enumerate(words):
+        payload = generate_copy_payload(idx)
+        print(payload)
+        p.send(payload)
+        print(p.recvline())
 
-    payload = generate_payload(idxs_1, pre_idxs=loop_2 + [1])
-    print(payload)
-    with process(['pwndbg', '--pid', str(p.pid)] + commands) as g:
-        sleep(3)
-        p.write(payload)
-        g.interactive()
-        print(p.readline())
+        payload = generate_word_payload(
+            word_cmd=to_indices(word),
+            before_word_cmds=loop_zero + [idx]
+        )
+        print(payload)
+        if not is_remote and idx == 7:
+            with process(['pwndbg', '--pid', str(p.pid)] + commands) as g:
+                sleep(3)
+                p.send(payload)
+                g.interactive()
+        else:
+            p.send(payload)
+
+        print(p.recvline())
+
+    if is_remote:
+        print(p.recvline())
