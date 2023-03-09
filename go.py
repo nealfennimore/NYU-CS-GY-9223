@@ -6,6 +6,10 @@ from pwn import *
 context.binary = './heterograms'
 context.terminal = ['tilix', '-e', 'bash', '-c']
 
+loop_3 = [1]
+loop_2 = [0]
+loop_1 = [2]
+
 def flatten(items: Iterable) -> List[Any]:
     return list(chain.from_iterable(items))
 
@@ -27,7 +31,7 @@ def generate_checksum(a: List[int]) -> int:
     return ~x
 
 
-def generate_payload(idxs: List[int]) -> bytes:
+def generate_payload(idxs: List[int], pre_idxs: List[int] = []) -> bytes:
 
     """
         #include <stdio.h>
@@ -64,19 +68,20 @@ def generate_payload(idxs: List[int]) -> bytes:
     """
 
     chksum_placeholder = [0]
-    loop_3 = [1]
 
-    payload = chksum_placeholder + loop_3 + [len(idxs)] + idxs
+    payload = chksum_placeholder + pre_idxs + loop_3 + [len(idxs)] + idxs
     payload = [ len(payload) ] + payload
 
     payload[1] = generate_checksum(payload[2:])
+
+    print(payload)
 
     # Issue here when checksum is under `-128`.
     # It's `-134` in our case for the whole
     return flat(payload, word_size=8)
 
 
-idxs_1 = [
+idxs_0 = [
     20, # u
     13, # n
     5,  # f
@@ -91,7 +96,7 @@ idxs_1 = [
     4,  # e
 ]
 
-idxs_2 = [
+idxs_1 = [
     -1,
     -13,  
     -8,
@@ -106,26 +111,27 @@ with process('./heterograms', aslr=False) as p:
     breakpoints = [
         # '&process',
         # '&check'
-        '0x55555555552e', # At checksum comparison
-        '0x5555555552d6', # Compare globalstate string value index
-        # '0x5555555553c4',
+        # '0x55555555552e', # At checksum comparison
+        # '0x5555555552d6', # Compare globalstate string value index
+        '0x55555555563d',
+        '0x5555555555f6', # Loop for 1 
         # '0x5555555555f6',
     ]
 
     print_statements = [
-      'x/32d &globalstate',
+      'x/32c &globalstate',
       'x/11s &strs',
     ]
 
     breakpoints = make_breakpoints(breakpoints)
-    commands = make_commands(breakpoints + print_statements)
+    commands = make_commands(breakpoints + print_statements + ['c'])
 
-    payload = generate_payload(idxs_1)
+    payload = generate_payload(idxs_0)
     print(payload)
     p.write(payload)
     print(p.readline())
 
-    payload = generate_payload(idxs_2)
+    payload = generate_payload(idxs_1, pre_idxs=loop_2 + [1])
     print(payload)
     with process(['pwndbg', '--pid', str(p.pid)] + commands) as g:
         sleep(3)
