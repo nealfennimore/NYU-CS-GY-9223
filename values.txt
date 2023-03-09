@@ -1,9 +1,0 @@
-0x55555555d470 <forestOfEwing+21584>:	0	0	0	0	0	3	0	0
-0x55555555d580 <forestOfEwing+21856>:	0	0	0	0	2	0	0	0
-0x55555555e240 <forestOfEwing+25120>:	0	0	0	0	6	0	0	0
-0x55555555eb60 <forestOfEwing+27456>:	0	7	0	0	0	0	0	0
-0x555555564350 <forestOfEwing+49968>:	0	5	0	0	0	0	0	0
-0x555555564408 <forestOfEwing+50152>:	0	0	0	0	0	1	0	0
-0x555555564ad8 <forestOfEwing+51896>:	0	0	0	0	0	0	0	9
-0x555555567c40 <forestOfEwing+64544>:	0	0	0	4	0	0	0	0
-0x555555567f60 <forestOfEwing+65344>:	0	0	0	8	0	0	0	0
