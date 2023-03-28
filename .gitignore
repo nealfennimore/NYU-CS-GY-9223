@@ -2,3 +2,4 @@
 .direnv
 shell.nix
 .venv
+payload
