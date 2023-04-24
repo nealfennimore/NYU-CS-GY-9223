@@ -1,0 +1,26 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "RsaCtfTool/RsaCtfTool.py",
+            "cwd": "${workspaceFolder}/week13",
+            "args": [
+                "--verbosity", "DEBUG",
+                "--publickey", "rsa1.pem,rsa2.pem",
+                "--uncipherfile", "rsa1.cipher,rsa2.cipher",
+                "--timeout", "600",
+                "--attack","all",
+                "--check_publickey",
+                "--private",
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}

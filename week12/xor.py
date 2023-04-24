@@ -25,7 +25,7 @@ for length in range(1, 10):
 
     for comb in combinations(chars, length):
         key = ''.join(comb).encode()
-        output = xor(decoded, key)
+        output = xor(decoded, '')
         if 'flag{' in output:
             found = True
             print(''.join(comb), output)
