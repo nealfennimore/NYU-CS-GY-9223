@@ -3,3 +3,4 @@
 shell.nix
 .venv
 payload
+__pycache__
