@@ -24,8 +24,9 @@ for length in range(1, 10):
     found = False
 
     for comb in combinations(chars, length):
+    # for comb in ['MVvHZ']:
         key = ''.join(comb).encode()
-        output = xor(decoded, '')
+        output = xor(decoded, key)
         if 'flag{' in output:
             found = True
             print(''.join(comb), output)
