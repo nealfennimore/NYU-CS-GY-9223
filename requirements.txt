@@ -2,7 +2,7 @@ pwntools==4.9.0
 rpyc==5.3.1
 ROPgadget==7.3.0
 six
-cryptography==39.0.1
+cryptography==41.0.3
 urllib3==1.26.5
 requests==2.25.1
 gmpy2==2.1.2
