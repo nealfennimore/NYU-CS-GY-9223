@@ -1,5 +1,5 @@
 pwntools==4.9.0
-rpyc==5.3.1
+rpyc==6.0.0
 ROPgadget==7.3.0
 six
 cryptography==39.0.1
